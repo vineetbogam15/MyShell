@@ -13,6 +13,9 @@
 #define MAX_TOKENS 100
 #define MAX_TOKEN_LENGTH 100
 
+// Directory paths to search for executables
+#define DIR_PATHS {"/usr/local/bin", "/usr/bin", "/bin"}
+
 // Function prototypes
 void print_prompt();
 void read_command(char* command);
@@ -21,6 +24,7 @@ void execute_command(char* tokens[]);
 void execute_builtin_command(char* tokens[]);
 void print_welcome_message();
 void print_goodbye_message();
+int check_slash(char * command);
 
 int main(int argc, char* argv[]) {
     // Determine mode of operation (interactive or batch)
@@ -89,13 +93,81 @@ void parse_command(char* command, char* tokens[]) {
     tokens[token_count] = '\0';
 }
 
+int check_slash(char * command) {
+    int i = 0;
+    int state = 0;
+    while (command[i] != '\0') {
+        if (command[i] == '/') {
+            state = 1;
+            break;
+        }
+        i++;
+    }
+    return state;
+}
+
 void execute_command(char* tokens[]) {
     // Check if the command is a built-in command
     if (strcmp(tokens[0], "cd") == 0 || strcmp(tokens[0], "pwd") == 0 || 
         strcmp(tokens[0], "which") == 0 || strcmp(tokens[0], "exit") == 0) {
         execute_builtin_command(tokens);
+    } else if (check_slash(tokens[0]) == 0) {
+        // Check if the command is in the specified directories
+        char* dir_paths[] = DIR_PATHS;
+        int i = 0;
+        int found = 0;
+        while (dir_paths[i] != NULL) {
+            char path[MAX_COMMAND_LENGTH];
+            //copy full path of desired command into path
+            strcpy(path, dir_paths[i]);
+            strcat(path, "/");
+            strcat(path, tokens[0]);
+            if (access(path, X_OK) == 0) {
+                // Found the command in one of the directories
+                found = 1;
+                // Execute the command
+                //Create a child process
+                pid_t pid = fork();
+                if (pid == 0) {
+                    // Child process
+                    execv(path, tokens);
+                    // error if execv returns
+                    perror("execv");
+                    exit(EXIT_FAILURE);
+                } else if (pid < 0) {
+                    // Fork failed
+                    perror("fork");
+                } else {
+                    // Parent process
+                    int status;
+                    waitpid(pid, &status, 0);
+                }
+                break;
+            }
+            i++;
+        }
+
+        if (!found) {
+            // Command not found in specified directories
+            printf("Command not found: %s\n", tokens[0]);
+        }
     } else {
-        //Creates a subprocess for the bare name command 
+        pid_t pid = fork();
+        if (pid == 0) {
+            // Child process
+            execv(tokens[0], tokens);
+            // error if execv returns
+            perror("execv");
+            exit(EXIT_FAILURE);
+        } else if (pid < 0) {
+            // Fork failed
+            perror("fork");
+        } else {
+            // Parent process
+            int status;
+            waitpid(pid, &status, 0);
+        }
+
     }
 }
 
