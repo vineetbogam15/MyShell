@@ -81,7 +81,8 @@ void parse_command(char* command, char* tokens[]) {
     // Split the command into tokens
     token = strtok(command, " \t\n");
     while (token != NULL && token_count < MAX_TOKENS - 1) {
-        tokens[token_count] = strdup(token);
+        tokens[token_count] = malloc(strlen(token));
+        strcpy(tokens[token_count], token);
         token_count++;
         token = strtok(NULL, " \t\n");
     }
@@ -95,6 +96,14 @@ void execute_command(char* tokens[]) {
         execute_builtin_command(tokens);
     } else {
         //Creates a subprocess for the bare name command 
+    }
+}
+
+void free_tokens(char* tokens[]) {
+    int i = 0;
+    while (i < MAX_TOKENS-1 && tokens[i] != NULL) {
+        free(tokens[i]);
+        i++;
     }
 }
 
@@ -116,7 +125,15 @@ void execute_builtin_command(char* tokens[]) {
         } else {
             perror("pwd");
         }
+    } else if (strcmp(tokens[0], "exit") == 0) {
+        int j = 1;
+        while (j < MAX_TOKENS-1 && tokens[j] != NULL) {
+            printf("%s ", tokens[j]);
+            j++;
+        }
+        printf("\nExitting mysh\n");
+        free_tokens(tokens);
+        exit(EXIT_SUCCESS);
     } 
    
 }
-
