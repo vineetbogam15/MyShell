@@ -25,6 +25,8 @@ void execute_builtin_command(char* tokens[]);
 void print_welcome_message();
 void print_goodbye_message();
 int check_slash(char * command);
+void check_redirection(char* tokens[]);
+
 
 int main(int argc, char* argv[]) {
     // Determine mode of operation (interactive or batch)
@@ -39,6 +41,7 @@ int main(int argc, char* argv[]) {
     while (1) {
         char command[MAX_COMMAND_LENGTH];
         char* tokens[MAX_TOKENS];
+        
 
          if (interactive_mode) {
             print_prompt();
@@ -93,7 +96,7 @@ void parse_command(char* command, char* tokens[]) {
     tokens[token_count] = '\0';
 }
 
-int check_slash(char * command) {
+int check_slash(char* command) {
     int i = 0;
     int state = 0;
     while (command[i] != '\0') {
@@ -107,9 +110,13 @@ int check_slash(char * command) {
 }
 
 void execute_command(char* tokens[]) {
+    // Save STDIN and STDOUT to handle redirection cases
+    int original_stdout = dup(STDOUT_FILENO);
+    int original_stdin = dup(STDIN_FILENO);
     // Check if the command is a built-in command
     if (strcmp(tokens[0], "cd") == 0 || strcmp(tokens[0], "pwd") == 0 || 
         strcmp(tokens[0], "which") == 0 || strcmp(tokens[0], "exit") == 0) {
+        check_redirection(tokens);
         execute_builtin_command(tokens);
     } else if (check_slash(tokens[0]) == 0) {
         // Check if the command is in the specified directories
@@ -130,6 +137,7 @@ void execute_command(char* tokens[]) {
                 pid_t pid = fork();
                 if (pid == 0) {
                     // Child process
+                    check_redirection(tokens);
                     execv(path, tokens);
                     // error if execv returns
                     perror("execv");
@@ -138,7 +146,7 @@ void execute_command(char* tokens[]) {
                     // Fork failed
                     perror("fork");
                 } else {
-                    // Parent process
+                    // fork() returns the pid of the parent process
                     int status;
                     waitpid(pid, &status, 0);
                 }
@@ -155,6 +163,7 @@ void execute_command(char* tokens[]) {
         pid_t pid = fork();
         if (pid == 0) {
             // Child process
+            check_redirection(tokens);
             execv(tokens[0], tokens);
             // error if execv returns
             perror("execv");
@@ -167,8 +176,11 @@ void execute_command(char* tokens[]) {
             int status;
             waitpid(pid, &status, 0);
         }
-
     }
+    dup2(original_stdout, STDOUT_FILENO);
+    dup2(original_stdin, STDIN_FILENO);
+    close(original_stdout);
+    close(original_stdin);
 }
 
 void free_tokens(char* tokens[]) {
@@ -207,5 +219,37 @@ void execute_builtin_command(char* tokens[]) {
         free_tokens(tokens);
         exit(EXIT_SUCCESS);
     } 
-   
+ 
+}
+
+void check_redirection(char *tokens[]) {
+    int i = 0;
+    while (tokens[i] != NULL) {
+        if (strcmp(tokens[i], "<") == 0) {
+            char* new_input = tokens[i+1];
+            int fd = open(new_input, O_RDONLY);
+            if (fd < 0) {
+                perror("open");
+                exit(1);
+            }
+            dup2(fd, STDIN_FILENO);
+            close(fd);
+            tokens[i] = NULL;
+            tokens[i + 1] = NULL;
+            break;
+        } else if (strcmp(tokens[i], ">") == 0) {
+            char* new_output = tokens[i+1];
+            int fd = open(new_output, O_WRONLY|O_CREAT|O_TRUNC, 0640);
+            if (fd < 0) {
+                perror("open");
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+            tokens[i] = NULL;
+            tokens[i + 1] = NULL;
+            break;
+        }
+        i++;
+    }
 }
