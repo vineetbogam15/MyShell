@@ -42,8 +42,10 @@ int check_pipe(char* tokens[]);
 
 int main(int argc, char* argv[]) {
     // Determine mode of operation (interactive or batch)
+    //bool interactive_mode = false; //This was to test batch mode
     bool interactive_mode = isatty(STDIN_FILENO);
     
+    //int shfd = open(argv[1], O_RDONLY);
     lines_t inputstream;
     fdinit(&inputstream, STDIN_FILENO);
 
@@ -62,8 +64,13 @@ int main(int argc, char* argv[]) {
         }
 
         // Read command from input
-        strcpy(command, read_command(&inputstream));
-
+        char *line = read_command(&inputstream);
+        if (line) {
+            strcpy(command, line);
+        } else {
+            break;
+        }
+        
         // Parse command into tokens
         parse_command(command, tokens);
 
