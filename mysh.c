@@ -43,11 +43,23 @@ int check_pipe(char* tokens[]);
 int main(int argc, char* argv[]) {
     // Determine mode of operation (interactive or batch)
     //bool interactive_mode = false; //This was to test batch mode
-    bool interactive_mode = isatty(STDIN_FILENO);
+    bool interactive_mode = true;
+    int filefd = STDIN_FILENO;
+
+    if (argc > 1) {
+        char *filename = argv[1];
+        char *lastthree = &filename[strlen(filename)-3];
+        if (strcmp(lastthree, ".sh") == 0) {
+            interactive_mode = false;
+            filefd = open(argv[1], O_RDONLY);
+        }
+    } else {
+        interactive_mode = isatty(STDIN_FILENO);
+    }
     
     //int shfd = open(argv[1], O_RDONLY);
     lines_t inputstream;
-    fdinit(&inputstream, STDIN_FILENO);
+    fdinit(&inputstream, filefd);
 
     // If interactive mode, print welcome message
     if (interactive_mode) {
