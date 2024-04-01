@@ -12,13 +12,23 @@
 #define MAX_COMMAND_LENGTH 1000
 #define MAX_TOKENS 100
 #define MAX_TOKEN_LENGTH 100
+#define BUFLENGTH 16
 
 // Directory paths to search for executables
 #define DIR_PATHS {"/usr/local/bin", "/usr/bin", "/bin"}
 
+
+typedef struct {
+    int fd;
+    int pos;
+    int len;
+    char buf[BUFLENGTH];
+} lines_t;
+
 // Function prototypes
 void print_prompt();
-void read_command(char* command);
+void fdinit(lines_t *L, int fd);
+char *read_command(lines_t *L); 
 void parse_command(char* command, char* tokens[]);
 void execute_command(char* tokens[]);
 void execute_builtin_command(char* tokens[]);
@@ -33,6 +43,9 @@ int check_pipe(char* tokens[]);
 int main(int argc, char* argv[]) {
     // Determine mode of operation (interactive or batch)
     bool interactive_mode = isatty(STDIN_FILENO);
+    
+    lines_t inputstream;
+    fdinit(&inputstream, STDIN_FILENO);
 
     // If interactive mode, print welcome message
     if (interactive_mode) {
@@ -43,14 +56,13 @@ int main(int argc, char* argv[]) {
     while (1) {
         char command[MAX_COMMAND_LENGTH];
         char* tokens[MAX_TOKENS];
-        
-
-         if (interactive_mode) {
+ 
+        if (interactive_mode) {
             print_prompt();
         }
 
         // Read command from input
-        read_command(command);
+        strcpy(command, read_command(&inputstream));
 
         // Parse command into tokens
         parse_command(command, tokens);
@@ -69,6 +81,7 @@ int main(int argc, char* argv[]) {
 
 void print_prompt() {
     printf("mysh> ");
+    fflush(stdout);
 }
 
 void print_welcome_message() {
@@ -79,8 +92,51 @@ void print_goodbye_message() {
     printf("exiting\n");
 }
 
-void read_command(char* command) {
-     fgets(command, MAX_COMMAND_LENGTH, stdin);
+void fdinit(lines_t *L, int fd) {
+    L->fd = fd;
+    L->pos = 0;
+    L->len = 0;
+}
+
+char *read_command(lines_t *L) {
+    // if fd isn't valid returns NULL
+    if (L->fd < 0) return NULL;
+    char *line = NULL;
+    int line_length = 0;
+    int segment_start = L->pos;
+
+    while (1) {
+        //printf("%d, %d\n", L->pos, L->len);
+        if (L->pos == L->len) {
+            if (segment_start < L->pos) {
+                int segment_length = L->pos - segment_start;
+                line = realloc(line, line_length + segment_length + 1);
+                memcpy(line + line_length, L->buf + segment_start, segment_length);
+                line_length = line_length + segment_length;
+                line[line_length] = '\0';
+            }
+            L->len = read(L->fd, L->buf, BUFLENGTH);
+            if (L->len < 1) {
+                close(L->fd);
+                L->fd = -1;
+                return line;
+            }
+            L->pos = 0;
+            segment_start = 0;
+        }
+        while (L->pos < L->len) {
+            if (L->buf[L->pos] == '\n') {
+                int segment_length = L->pos - segment_start;
+                line = realloc(line, line_length + segment_length + 1);
+                memcpy(line + line_length, L->buf + segment_start, segment_length);
+                line[line_length + segment_length] = '\0';
+                L->pos++;
+                return line;
+            }
+            L->pos++;
+        }
+    }
+    return NULL;
 }
 
 void parse_command(char* command, char* tokens[]) {
