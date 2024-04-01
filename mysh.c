@@ -306,6 +306,7 @@ void execute_full(char* tokens[]) {
             tokens[pipe_index] = NULL;
             // Execute the first command
             execute_command(tokens);
+            wait(NULL); 
             exit(0); 
         } else {
             // Create the second process if first process is completed
@@ -323,6 +324,7 @@ void execute_full(char* tokens[]) {
 
                 // Execute second command
                 execute_command(tokens + pipe_index + 1);
+                wait(NULL); 
                 exit(0); 
             } else {
                 // Parent process
