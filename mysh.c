@@ -24,8 +24,10 @@ void execute_command(char* tokens[]);
 void execute_builtin_command(char* tokens[]);
 void print_welcome_message();
 void print_goodbye_message();
-int check_slash(char * command);
+int check_slash(char* command);
 void check_redirection(char* tokens[]);
+void execute_full(char* tokens[]);
+int check_pipe(char* tokens[]);
 
 
 int main(int argc, char* argv[]) {
@@ -54,7 +56,7 @@ int main(int argc, char* argv[]) {
         parse_command(command, tokens);
 
         // Execute the command
-        execute_command(tokens);
+        execute_full(tokens);
     }
 
     // If interactive mode, print goodbye message
@@ -251,5 +253,87 @@ void check_redirection(char *tokens[]) {
             break;
         }
         i++;
+    }
+}
+
+int check_pipe(char* tokens[]) {
+    int i = 0;
+    int state = 0;
+    while (tokens[i] != NULL) {
+        if (strcmp(tokens[i], "|") == 0) {
+            state = 1;
+            break;
+        }
+        i++;
+    }
+    return state;
+}
+
+void execute_full(char* tokens[]) {
+    if (check_pipe(tokens) == 0) {
+        execute_command(tokens);
+    } else {
+        //Traverse the tokens to find where the pipe occurs (used to split up into two processes)
+        int pipe_index = 0;
+        while (tokens[pipe_index] != NULL) {
+            if (strcmp(tokens[pipe_index], "|") == 0) {
+                break;
+            }
+            pipe_index++;
+        }
+
+        // Create pipe
+        int p[2];
+        //return error if failure
+        if (pipe(p) == -1) {
+            perror("pipe");
+            exit(1);
+        }
+
+        // Create child 1 for first process
+        pid_t pid1 = fork();
+        if (pid1 == -1) {
+            perror("fork");
+            exit(1);
+        } else if (pid1 == 0) {
+            // Close read end of the pipe
+            close(p[0]); 
+            //redirect output to the write end
+            dup2(p[1], STDOUT_FILENO); 
+            //close the write end to ensure no leaks
+            close(p[1]);
+            //set pipe token to null so execv stops when it reaches the first null token
+            tokens[pipe_index] = NULL;
+            // Execute the first command
+            execute_command(tokens);
+            wait(NULL); 
+            exit(0); 
+        } else {
+            // Create the second process if first process is completed
+            pid_t pid2 = fork();
+            if (pid2 == -1) {
+                perror("fork");
+                exit(1);
+            } else if (pid2 == 0) {
+                // Close write end of the pipe
+                close(p[1]); 
+                //redirect input to the read end
+                dup2(p[0], STDIN_FILENO); 
+                 //close the read end to ensure no leaks
+                close(p[0]); 
+
+                // Execute second command
+                execute_command(tokens + pipe_index + 1);
+                wait(NULL); 
+                exit(0); 
+            } else {
+                // Parent process
+                close(p[0]); 
+                close(p[1]);
+                // Wait for both children to finish
+                wait(NULL); 
+                wait(NULL);
+            }
+        }
     }
 }
