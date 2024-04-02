@@ -17,6 +17,8 @@
 // Directory paths to search for executables
 #define DIR_PATHS {"/usr/local/bin", "/usr/bin", "/bin"}
 
+// Global int variable that keeps track of if the previous command failed or succeeded
+int currstatus = 1;
 
 typedef struct {
     int fd;
@@ -190,7 +192,22 @@ void execute_command(char* tokens[]) {
     // Save STDIN and STDOUT to handle redirection cases
     int original_stdout = dup(STDOUT_FILENO);
     int original_stdin = dup(STDIN_FILENO);
+
     // Check if the command is a built-in command
+    if (strcmp(tokens[0], "then") == 0) {
+        if (currstatus != 1) {
+            return;
+        }
+        tokens = &tokens[1];
+    }
+
+    if (strcmp(tokens[0], "else") == 0) {
+        if (currstatus != 0) {
+            return;
+        }
+        tokens = &tokens[1];
+    }
+
     if (strcmp(tokens[0], "cd") == 0 || strcmp(tokens[0], "pwd") == 0 || 
         strcmp(tokens[0], "which") == 0 || strcmp(tokens[0], "exit") == 0) {
         check_redirection(tokens);
@@ -218,14 +235,17 @@ void execute_command(char* tokens[]) {
                     execv(path, tokens);
                     // error if execv returns
                     perror("execv");
+                    currstatus = 0;
                     exit(EXIT_FAILURE);
                 } else if (pid < 0) {
                     // Fork failed
+                    currstatus = 0;
                     perror("fork");
                 } else {
                     // fork() returns the pid of the parent process
                     int status;
                     waitpid(pid, &status, 0);
+                    currstatus = 1;
                 }
                 break;
             }
@@ -244,14 +264,17 @@ void execute_command(char* tokens[]) {
             execv(tokens[0], tokens);
             // error if execv returns
             perror("execv");
+            currstatus = 0;
             exit(EXIT_FAILURE);
         } else if (pid < 0) {
             // Fork failed
+            currstatus = 0;
             perror("fork");
         } else {
             // Parent process
             int status;
             waitpid(pid, &status, 0);
+            currstatus = 1;
         }
     }
     dup2(original_stdout, STDOUT_FILENO);
@@ -273,9 +296,13 @@ void execute_builtin_command(char* tokens[]) {
         // Change directory
         if (tokens[1] != NULL) {
             if (chdir(tokens[1]) != 0) {
+                currstatus = 0;
                 perror("cd");
+            } else {
+                currstatus = 1;
             }
         } else {
+            currstatus = 0;
             fprintf(stderr, "cd: missing argument\n");
         }
     } else if (strcmp(tokens[0], "pwd") == 0) {
@@ -283,8 +310,10 @@ void execute_builtin_command(char* tokens[]) {
         char cwd[1000];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
             printf("%s\n", cwd);
+            currstatus = 1;
         } else {
             perror("pwd");
+            currstatus = 0;
         }
     } else if (strcmp(tokens[0], "exit") == 0) {
         int j = 1;
@@ -294,6 +323,7 @@ void execute_builtin_command(char* tokens[]) {
         }
         printf("\nExitting mysh\n");
         free_tokens(tokens);
+        currstatus = 1;
         exit(EXIT_SUCCESS);
     } 
  
