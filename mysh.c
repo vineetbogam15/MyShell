@@ -101,8 +101,8 @@ int main(int argc, char* argv[]) {
 }
 
 void print_prompt() {
-    printf("mysh> ");
-    fflush(stdout);
+    const char *prompt = "mysh> ";
+    write(dup(STDOUT_FILENO), prompt, strlen(prompt));
 }
 
 void print_welcome_message() {
@@ -189,9 +189,6 @@ int check_slash(char* command) {
 }
 
 void execute_command(char* tokens[]) {
-    // Save STDIN and STDOUT to handle redirection cases
-    int original_stdout = dup(STDOUT_FILENO);
-    int original_stdin = dup(STDIN_FILENO);
 
     // Check if the command is a built-in command
     if (strcmp(tokens[0], "then") == 0) {
@@ -277,10 +274,6 @@ void execute_command(char* tokens[]) {
             currstatus = 1;
         }
     }
-    dup2(original_stdout, STDOUT_FILENO);
-    dup2(original_stdin, STDIN_FILENO);
-    close(original_stdout);
-    close(original_stdin);
 }
 
 void free_tokens(char* tokens[]) {
