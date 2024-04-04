@@ -561,8 +561,6 @@ void execute_full(char* tokens[]) {
 
     int original_stdout = dup(STDOUT_FILENO);
     int original_stdin = dup(STDIN_FILENO);
-    //ensure redirection takes precendence over pipes
-    check_redirection(tokens);
 
     if (check_pipe(tokens) == 0) {
         execute_command(tokens);
