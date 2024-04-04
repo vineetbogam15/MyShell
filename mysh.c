@@ -558,6 +558,12 @@ int check_pipe(char* tokens[]) {
 
 
 void execute_full(char* tokens[]) {
+
+    int original_stdout = dup(STDOUT_FILENO);
+    int original_stdin = dup(STDIN_FILENO);
+    //ensure redirection takes precendence over pipes
+    check_redirection(tokens);
+
     if (check_pipe(tokens) == 0) {
         execute_command(tokens);
     } else {
@@ -624,4 +630,8 @@ void execute_full(char* tokens[]) {
             }
         }
     }
+    dup2(original_stdout, STDOUT_FILENO);
+    dup2(original_stdin, STDIN_FILENO);
+    close(original_stdout);
+    close(original_stdin);
 }
