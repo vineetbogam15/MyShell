@@ -21,6 +21,8 @@
 // Global int variable that keeps track of if the previous command failed or succeeded
 int currstatus = 1;
 
+
+
 typedef struct {
     int fd;
     int pos;
@@ -405,6 +407,7 @@ int check_wildcard(char* token, char* tokens[], int tokencount) {
     return matchCount;
 }
 
+
 void free_tokens(char* tokens[]) {
     int i = 0;
     while (i < MAX_TOKENS-1 && tokens[i] != NULL) {
@@ -412,6 +415,7 @@ void free_tokens(char* tokens[]) {
         i++;
     }
 }
+
 
 void execute_builtin_command(char* tokens[]) {
     if (strcmp(tokens[0], "cd") == 0) {
@@ -437,6 +441,36 @@ void execute_builtin_command(char* tokens[]) {
             perror("pwd");
             currstatus = 0;
         }
+    } else if (strcmp(tokens[0], "which") == 0) {
+        if ((tokens[1] == NULL) || (tokens[2] != NULL) || (strcmp(tokens[1], "cd") == 0 || strcmp(tokens[1], "pwd") == 0 ||
+        strcmp(tokens[1], "which") == 0 || strcmp(tokens[1], "exit") == 0)) {
+            fprintf(stderr, "which: incorrect arguments\n");
+            currstatus = 0;
+        } else {
+            char *path_env = getenv("PATH");
+            char *path_env_copy = malloc(strlen(path_env)+1);
+            strcpy(path_env_copy, path_env);
+            char *path = strtok(path_env_copy, ":");
+            free(path_env_copy);
+
+            while (path != NULL) {
+                char cmd_path[MAX_TOKEN_LENGTH*2];
+                strcpy(cmd_path, path);
+                strcat(cmd_path, "/");
+                strcat(cmd_path, tokens[1]);
+
+                if (access(cmd_path, X_OK) == 0) {
+                    printf("%s\n", cmd_path);
+                    currstatus = 1;
+                    return;
+                }
+
+                path = strtok(NULL, ":");
+            }
+
+            fprintf(stderr, "which: no command found in PATH\n");
+            currstatus = 0;
+        }   
     } else if (strcmp(tokens[0], "exit") == 0) {
         int j = 1;
         while (j < MAX_TOKENS-1 && tokens[j] != NULL) {
@@ -450,6 +484,7 @@ void execute_builtin_command(char* tokens[]) {
     } 
  
 }
+
 
 void check_redirection(char *tokens[]) {
     int i = 0;
@@ -520,6 +555,7 @@ int check_pipe(char* tokens[]) {
     }
     return state;
 }
+
 
 void execute_full(char* tokens[]) {
     if (check_pipe(tokens) == 0) {
