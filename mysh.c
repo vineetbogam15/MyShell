@@ -10,9 +10,9 @@
 #include <errno.h>
 #include <sys/stat.h>
 
-#define MAX_COMMAND_LENGTH 1000
-#define MAX_TOKENS 100
-#define MAX_TOKEN_LENGTH 100
+#define MAX_COMMAND_LENGTH 10000
+#define MAX_TOKENS 1000
+#define MAX_TOKEN_LENGTH 1000
 #define BUFLENGTH 16
 
 // Directory paths to search for executables
@@ -171,11 +171,11 @@ int parse_command(char* command, char* tokens[]) {
     while (token != NULL && token_count < MAX_TOKENS - 1) {
         tokens[token_count] = malloc(strlen(token));
         strcpy(tokens[token_count], token);
+       
         token_count++;
         token = strtok(NULL, " \t\n");
     }
-    tokens[token_count] = '\0';
-
+    tokens[token_count] = NULL;
     return token_count;
 }
 
@@ -449,35 +449,60 @@ void execute_builtin_command(char* tokens[]) {
 
 void check_redirection(char *tokens[]) {
     int i = 0;
+    char *input_file = NULL;
+    char *output_file = NULL;
+    int input_index = -1;
+    int output_index = -1; 
+
+    // Find input and output redirection symbols
     while (tokens[i] != NULL) {
         if (strcmp(tokens[i], "<") == 0) {
-            char* new_input = tokens[i+1];
-            int fd = open(new_input, O_RDONLY);
-            if (fd < 0) {
-                perror("open");
-                exit(1);
-            }
-            dup2(fd, STDIN_FILENO);
-            close(fd);
-            tokens[i] = NULL;
-            tokens[i + 1] = NULL;
-            break;
+            
+            input_file = tokens[i + 1];
+            input_index = i; 
         } else if (strcmp(tokens[i], ">") == 0) {
-            char* new_output = tokens[i+1];
-            int fd = open(new_output, O_WRONLY|O_CREAT|O_TRUNC, 0640);
-            if (fd < 0) {
-                perror("open");
-                exit(1);
-            }
-            dup2(fd, STDOUT_FILENO);
-            close(fd);
-            tokens[i] = NULL;
-            tokens[i + 1] = NULL;
-            break;
+            
+            output_file = tokens[i + 1];
+            output_index = i; 
         }
         i++;
     }
+
+    // Perform input redirection 
+    if (input_file != NULL) {
+        int fd = open(input_file, O_RDONLY);
+        if (fd < 0) {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+        dup2(fd, STDIN_FILENO);
+        close(fd);
+
+        // Remove the input redirection tokens from the array
+        if (input_index >= 0) {
+            tokens[input_index] = NULL;
+            tokens[input_index + 1] = NULL;
+        }
+    }
+
+    // Perform output redirection 
+    if (output_file != NULL) {
+        int fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+        if (fd < 0) {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+        dup2(fd, STDOUT_FILENO);
+        close(fd);
+
+        // Remove the output redirection tokens from the array
+        if (output_index >= 0) {
+            tokens[output_index] = NULL;
+            tokens[output_index + 1] = NULL;
+        }
+    }
 }
+
 
 int check_pipe(char* tokens[]) {
     int i = 0;
