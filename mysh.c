@@ -32,15 +32,15 @@ typedef struct {
 void print_prompt();
 void fdinit(lines_t *L, int fd);
 char *read_command(lines_t *L); 
-int parse_command(char* command, char* tokens[]);
-void execute_command(char* tokens[], int tokencount);
-void check_wildcard(char* token, char* tokens[], int tokencount);
+void parse_command(char* command, char* tokens[]);
+void execute_command(char* tokens[]);
+int check_wildcard(char* token, char* tokens[], int tokencount);
 void execute_builtin_command(char* tokens[]);
 void print_welcome_message();
 void print_goodbye_message();
 int check_slash(char* command);
 void check_redirection(char* tokens[]);
-void execute_full(char* tokens[], int tokencount);
+void execute_full(char* tokens[]);
 int check_pipe(char* tokens[]);
 
 
@@ -88,10 +88,10 @@ int main(int argc, char* argv[]) {
         }
         
         // Parse command into tokens
-        int tokencount = parse_command(command, tokens);
+        parse_command(command, tokens);
 
         // Execute the command
-        execute_full(tokens, tokencount);
+        execute_full(tokens);
     }
 
     // If interactive mode, print goodbye message
@@ -162,21 +162,26 @@ char *read_command(lines_t *L) {
     return NULL;
 }
 
-int parse_command(char* command, char* tokens[]) {
+void parse_command(char* command, char* tokens[]) {
     char* token;
     int token_count = 0;
 
     // Split the command into tokens
     token = strtok(command, " \t\n");
     while (token != NULL && token_count < MAX_TOKENS - 1) {
-        tokens[token_count] = malloc(strlen(token));
-        strcpy(tokens[token_count], token);
+        int x = 0;
+        if ((x = check_wildcard(token, tokens, token_count)) > 0) {
+            token_count += x;
+            token = strtok(NULL, " \t\n");
+        } else {
+            tokens[token_count] = malloc(strlen(token));
+            strcpy(tokens[token_count], token);
        
-        token_count++;
-        token = strtok(NULL, " \t\n");
+            token_count++;
+            token = strtok(NULL, " \t\n");
+        }
     }
     tokens[token_count] = NULL;
-    return token_count;
 }
 
 int check_slash(char* command) {
@@ -192,7 +197,7 @@ int check_slash(char* command) {
     return state;
 }
 
-void execute_command(char* tokens[], int tokencount) {
+void execute_command(char* tokens[]) {
     // Save STDIN and STDOUT to handle redirection cases
     int original_stdout = dup(STDOUT_FILENO);
     int original_stdin = dup(STDIN_FILENO);
@@ -210,13 +215,6 @@ void execute_command(char* tokens[], int tokencount) {
             return;
         }
         tokens = &tokens[1];
-    }
-    
-    for (int i = 0; i < MAX_TOKENS-1; i++) {
-        if (tokens[i] == NULL) {
-            break;
-        }
-        check_wildcard(tokens[i], tokens, tokencount);
     }
 
     if (strcmp(tokens[0], "cd") == 0 || strcmp(tokens[0], "pwd") == 0 || 
@@ -295,9 +293,10 @@ void execute_command(char* tokens[], int tokencount) {
 }
 
 
-void check_wildcard(char* token, char* tokens[], int tokencount) {
+int check_wildcard(char* token, char* tokens[], int tokencount) {
     bool wildcardFound = false;
     bool pathFound = false;
+    int matchCount = 0;
     char *startingpath = malloc(strlen(token));
     strcpy(startingpath, token);
     int finalPathStart = 0;
@@ -318,7 +317,6 @@ void check_wildcard(char* token, char* tokens[], int tokencount) {
     
     int wildcardLocation = 0;
     for (int i = 0; i < strlen(temptoken); i++) {
-        //printf("Current char: %c\n", temptoken[i]);
         if (temptoken[i] == '*') {
             wildcardFound = true;
             break;
@@ -335,30 +333,38 @@ void check_wildcard(char* token, char* tokens[], int tokencount) {
 
         DIR *d;
         struct dirent *dir;
-
         if (pathFound && strlen(startingpath) > 0) {
             d = opendir(startingpath);
-            //printf("Path: %s\n", startingpath);
         } else {
             d = opendir(".");
             free(startingpath);
         }
-        //printf("%s, %s, %s\n", temptoken, firsthalf, secondhalf);
+    
 
         if (d) {
             while ((dir = readdir(d))) {
                 char *currname = dir->d_name;
 
                 struct stat sbuf;
+                
+                char* fullpath = malloc(strlen(startingpath)*2+strlen(currname));
 
-                int x = stat(currname, &sbuf);
+                if (pathFound) {
+                    strcpy(fullpath, startingpath);
+                    strcat(fullpath, "/");
+                    strcat(fullpath, currname);
+                } else {
+                    strcpy(fullpath, currname);
+                }
 
+                int x = stat(fullpath, &sbuf);
+                
                 if (x < 0) {
                     closedir(d);
                     perror("Stat Error\n");
-                    return;
+                    return matchCount;
                 }
-
+                                
                 if (S_ISREG(sbuf.st_mode) && currname[0] != '.') {
                     bool matchCheck = true;
 
@@ -377,28 +383,26 @@ void check_wildcard(char* token, char* tokens[], int tokencount) {
                     }
 
                     if (matchCheck && pathFound) {
-                        char* fullpath = malloc(strlen(startingpath)*2+strlen(currname));
-                        strcpy(fullpath, startingpath);
-                        strcat(fullpath, "/");
-                        strcat(fullpath, currname);
-                        tokens[tokencount] = fullpath;
+                        matchCount++;
+                        tokens[tokencount] = malloc(strlen(fullpath));
+                        strcpy(tokens[tokencount], fullpath);
                         tokencount++;
                         tokens[tokencount] = '\0';
-                        //printf("final: %s\n", fullpath);
-                        free(fullpath);
                     } else if (matchCheck) {
-                        tokens[tokencount] = currname;
-                        //printf("final: %s\n", currname);
+                        matchCount++;
+                        tokens[tokencount] = malloc(strlen(fullpath));
+                        strcpy(tokens[tokencount], fullpath);
                         tokencount++;
                         tokens[tokencount] = '\0';
                     }
 
                 }
+                free(fullpath);
             }
             closedir(d);
         }
     }
-    //printf("Success\n");
+    return matchCount;
 }
 
 void free_tokens(char* tokens[]) {
@@ -517,9 +521,9 @@ int check_pipe(char* tokens[]) {
     return state;
 }
 
-void execute_full(char* tokens[], int tokencount) {
+void execute_full(char* tokens[]) {
     if (check_pipe(tokens) == 0) {
-        execute_command(tokens, tokencount);
+        execute_command(tokens);
     } else {
         //Traverse the tokens to find where the pipe occurs (used to split up into two processes)
         int pipe_index = 0;
@@ -553,7 +557,7 @@ void execute_full(char* tokens[], int tokencount) {
             //set pipe token to null so execv stops when it reaches the first null token
             tokens[pipe_index] = NULL;
             // Execute the first command
-            execute_command(tokens, tokencount);
+            execute_command(tokens);
             wait(NULL); 
             exit(0); 
         } else {
@@ -571,7 +575,7 @@ void execute_full(char* tokens[], int tokencount) {
                 close(p[0]); 
 
                 // Execute second command
-                execute_command(tokens + pipe_index + 1, tokencount);
+                execute_command(tokens + pipe_index + 1);
                 wait(NULL); 
                 exit(0); 
             } else {
