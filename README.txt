@@ -42,6 +42,8 @@ Pipeline:
     - ls | grep *.txt 
     - sort < input.txt | uniq > output.txt
     - cat < input.txt | grep "pattern" > output.txt
+    - ls | grep "pattern" < input.txt 
+
 
 Wildcards: 
     - ls foo*bar.txt
