@@ -37,6 +37,8 @@ Pathnames, bare names, and built-in commands:
         - Built in: pwd, exit, cd test, cd .., which cd, which touch
         - Bare names: touch test, rm test, gcc test.c -o test, mv test newName
         - Pathnames: executing compiled files (EX: ./test, ./a etc.)
+          - we also ran ./mysh multiple times to create multiple shells inside of each other, 
+             and made sure they exitted properly
 
 Next, we tested if our program properly created child processes with dup2() through redirection. 
     - We checked if open() properly created the file if it didn't already exist, as well as opened 
