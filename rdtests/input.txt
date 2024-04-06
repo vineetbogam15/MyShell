@@ -1,3 +1,0 @@
-This is a sample input file.
-It contains some text.
-This text includes the pattern "pattern".

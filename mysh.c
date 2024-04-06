@@ -19,9 +19,8 @@
 #define DIR_PATHS {"/usr/local/bin", "/usr/bin", "/bin"}
 
 // Global int variable that keeps track of if the previous command failed or succeeded
+//Used for conditionals
 int currstatus = 1;
-
-
 
 typedef struct {
     int fd;
@@ -44,6 +43,7 @@ int check_slash(char* command);
 void check_redirection(char* tokens[]);
 void execute_full(char* tokens[]);
 int check_pipe(char* tokens[]);
+void preprocess_command(char* command);
 
 
 int main(int argc, char* argv[]) {
@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
         execute_full(tokens);
     }
 
-    // If interactive mode, print goodbye message
+    // If interactive mode, print goodbye message 
     if (interactive_mode) {
         print_goodbye_message();
     }
@@ -164,21 +164,54 @@ char *read_command(lines_t *L) {
     return NULL;
 }
 
+//Used to handle <, >, and | tokens, as they are always tokens no matter whitespace
+//If they exist without white space, this function puts a space between them so we can parse it later
+void preprocess_command(char* command) {
+    int i = 0;
+    while (command[i] != '\0') {
+        if (command[i] == '>' || command[i] == '<' || command[i] == '|') {
+            if (i > 0 && command[i - 1] != ' ') {
+                int j = strlen(command);
+                while (j >= i) {
+                    command[j + 1] = command[j];
+                    j--;
+                }
+                command[i] = ' ';
+                i++;
+            }
+            
+            if (command[i + 1] != ' ') {
+                int j = strlen(command);
+                while (j >= i + 1) {
+                    command[j + 1] = command[j];
+                    j--;
+                }
+                command[i + 1] = ' ';
+                i++;
+            }
+        }
+        i++;
+    }
+}
+
 void parse_command(char* command, char* tokens[]) {
     char* token;
     int token_count = 0;
+
+    //handle "< > |" edge cases
+    preprocess_command(command);
 
     // Split the command into tokens
     token = strtok(command, " \t\n");
     while (token != NULL && token_count < MAX_TOKENS - 1) {
         int x = 0;
+        //Handle when a wildcard is in the command
         if ((x = check_wildcard(token, tokens, token_count)) > 0) {
             token_count += x;
             token = strtok(NULL, " \t\n");
         } else {
             tokens[token_count] = malloc(strlen(token));
             strcpy(tokens[token_count], token);
-       
             token_count++;
             token = strtok(NULL, " \t\n");
         }
@@ -186,6 +219,8 @@ void parse_command(char* command, char* tokens[]) {
     tokens[token_count] = NULL;
 }
 
+//checks if the command is a direct pathname or not
+//returns 1 if it is
 int check_slash(char* command) {
     int i = 0;
     int state = 0;
@@ -199,26 +234,29 @@ int check_slash(char* command) {
     return state;
 }
 
+//executes each single command based each special case
 void execute_command(char* tokens[]) {
     // Save STDIN and STDOUT to handle redirection cases
     int original_stdout = dup(STDOUT_FILENO);
     int original_stdin = dup(STDIN_FILENO);
 
-    // Check if the command is a built-in command
+    // Check if the command has a conditional
     if (strcmp(tokens[0], "then") == 0) {
         if (currstatus != 1) {
             return;
         }
+        //only run if previous command ran
         tokens = &tokens[1];
     }
 
     if (strcmp(tokens[0], "else") == 0) {
+        //only run if previous command failed
         if (currstatus != 0) {
             return;
         }
         tokens = &tokens[1];
     }
-
+    //if built-in command
     if (strcmp(tokens[0], "cd") == 0 || strcmp(tokens[0], "pwd") == 0 || 
         strcmp(tokens[0], "which") == 0 || strcmp(tokens[0], "exit") == 0) {
         check_redirection(tokens);
@@ -294,7 +332,7 @@ void execute_command(char* tokens[]) {
     close(original_stdin);
 }
 
-
+//check if a wildcard exists and traverse the directory to find all working files that fit under the criteria
 int check_wildcard(char* token, char* tokens[], int tokencount) {
     bool wildcardFound = false;
     bool pathFound = false;
@@ -407,7 +445,7 @@ int check_wildcard(char* token, char* tokens[], int tokencount) {
     return matchCount;
 }
 
-
+//free tokens for no memory leaks
 void free_tokens(char* tokens[]) {
     int i = 0;
     while (i < MAX_TOKENS-1 && tokens[i] != NULL) {
@@ -477,6 +515,7 @@ void execute_builtin_command(char* tokens[]) {
             printf("%s ", tokens[j]);
             j++;
         }
+        //print exit message
         printf("\nExitting mysh\n");
         free_tokens(tokens);
         currstatus = 1;
@@ -485,7 +524,7 @@ void execute_builtin_command(char* tokens[]) {
  
 }
 
-
+//Checks and handles redirection
 void check_redirection(char *tokens[]) {
     int i = 0;
     char *input_file = NULL;
@@ -496,12 +535,14 @@ void check_redirection(char *tokens[]) {
     // Find input and output redirection symbols
     while (tokens[i] != NULL) {
         if (strcmp(tokens[i], "<") == 0) {
-            
+            //input file is the token after the symbol
             input_file = tokens[i + 1];
+            //store index to remove symbol and file from the command before execution
             input_index = i; 
         } else if (strcmp(tokens[i], ">") == 0) {
-            
+            //output file is the token after the symbol
             output_file = tokens[i + 1];
+            //store index to remove symbol and file from the command before execution
             output_index = i; 
         }
         i++;
@@ -510,10 +551,12 @@ void check_redirection(char *tokens[]) {
     // Perform input redirection 
     if (input_file != NULL) {
         int fd = open(input_file, O_RDONLY);
+        //error check
         if (fd < 0) {
             perror("open");
             exit(EXIT_FAILURE);
         }
+        //fd = new standard input
         dup2(fd, STDIN_FILENO);
         close(fd);
 
@@ -531,6 +574,7 @@ void check_redirection(char *tokens[]) {
             perror("open");
             exit(EXIT_FAILURE);
         }
+        //file descriptor = new standard output
         dup2(fd, STDOUT_FILENO);
         close(fd);
 
@@ -543,6 +587,8 @@ void check_redirection(char *tokens[]) {
 }
 
 
+//check if pipe exists in the command
+//returns 1 if it does
 int check_pipe(char* tokens[]) {
     int i = 0;
     int state = 0;
@@ -557,6 +603,8 @@ int check_pipe(char* tokens[]) {
 }
 
 
+//executes entire command and accounts for piping
+//redirection takes precedence due to its usage in execute_command()
 void execute_full(char* tokens[]) {
 
     int original_stdout = dup(STDOUT_FILENO);
